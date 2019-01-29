@@ -79,7 +79,7 @@ GOIndex=np.genfromtxt(GOIndexFile,delimiter=',')
 GOData=np.genfromtxt(GODataFile,delimiter=',')
 
 ###############################################################################
-#                          Libraries to use  
+#                          Dimensionality Reduction  
 ###############################################################################
 
 #Performs 3 of the most common dimensionality reductions techniques 
@@ -101,7 +101,7 @@ LocReduced=DimensionalityReduction(LocData)
 GOReduced=DimensionalityReduction(GOData)
 
 ###############################################################################
-#                          Libraries to use  
+#                          Visualization  
 ###############################################################################
 
 #Plotting the location data 
@@ -119,7 +119,7 @@ PanelPlot(fig,GOReduced)
 plt.suptitle('Gene Ontology Data')
 
 ###############################################################################
-#                          Libraries to use  
+#                          Clustering Functions  
 ###############################################################################
 
 #DBSCAN optimization 
@@ -220,7 +220,7 @@ def PanelClusterPlot(Figure,Data):
     ClusterPlot(DS3,ax3,'Kernel PCA')
 
 ###############################################################################
-#                          Libraries to use  
+#                          Visualization  
 ###############################################################################
 
 #Plotting the location data 
