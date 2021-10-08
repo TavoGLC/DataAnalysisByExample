@@ -1,0 +1,765 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+MIT License
+Copyright (c) 2021 Octavio Gonzalez-Lugo 
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+@author: Octavio Gonzalez-Lugo
+"""
+
+###############################################################################
+# Loading packages 
+###############################################################################
+
+import os 
+import re
+import copy
+import numpy as np
+import matplotlib.pyplot as plt
+
+from math import radians
+from sklearn.cluster import DBSCAN
+from sklearn.neighbors import DistanceMetric
+
+###############################################################################
+# Plotting utility functions
+###############################################################################
+
+def PlotStyle(Axes): 
+    """
+    Parameters
+    ----------
+    Axes : Matplotlib axes object
+        Applies a general style to the matplotlib object
+
+    Returns
+    -------
+    None.
+    """    
+    Axes.spines['top'].set_visible(False)
+    Axes.spines['bottom'].set_visible(True)
+    Axes.spines['left'].set_visible(True)
+    Axes.spines['right'].set_visible(False)
+    Axes.xaxis.set_tick_params(labelsize=13)
+    Axes.yaxis.set_tick_params(labelsize=13)
+
+def ImageStyle(Axes): 
+    """
+    Parameters
+    ----------
+    Axes : Matplotlib axes object
+        Applies a general style to the matplotlib object
+
+    Returns
+    -------
+    None.
+    """    
+    Axes.spines['top'].set_visible(False)
+    Axes.spines['bottom'].set_visible(False)
+    Axes.spines['left'].set_visible(False)
+    Axes.spines['right'].set_visible(False)
+    Axes.set_xticks([])
+    Axes.set_yticks([])
+
+###############################################################################
+# Load data function
+###############################################################################
+
+def GetTxtFile(Dir):
+    '''
+    Finds and loads a txt file 
+    Parameters
+    ----------
+    Dir : str
+        file directory.
+
+    Returns
+    -------
+    container : list
+        list of strings, each item in the list its a file line.
+
+    '''
+    
+    cDir=Dir
+    
+    with open(cDir) as file:
+        container=file.readlines()
+    
+    return container
+
+###############################################################################
+# Loading the data
+###############################################################################
+
+GlobalDirectory=r"/home/tavoglc/LocalData/scrapped/"
+FileNames=os.listdir(GlobalDirectory)
+
+nFiles=len(FileNames)
+
+print(nFiles)
+
+###############################################################################
+# Correct Download
+###############################################################################
+
+Header='           PRECIP  EVAP   TMAX   TMIN\n'
+
+correctDownload=[]
+headerLocation=[]
+
+for j,file in enumerate(FileNames):
+    currentFile=GetTxtFile(GlobalDirectory+file)
+    disc=[currentFile[k]==Header for k in range(18)]
+    if any(disc):
+        correctDownload.append(j)
+        headerLocation.append(np.argmax(disc))
+
+print(len(correctDownload))
+
+###############################################################################
+# Correct size
+###############################################################################
+
+correctSize=[]
+sizeheaderLocation=[]
+
+for k,loc in zip(correctDownload,headerLocation):
+    currentFile=GetTxtFile(GlobalDirectory+FileNames[k])
+    if len(currentFile)>380:
+        correctSize.append(k)
+        sizeheaderLocation.append(loc)
+
+print(len(correctSize))        
+
+###############################################################################
+# Enough data content
+###############################################################################
+
+missingdata=[]
+filesize=[]
+correctData=[]
+correctHeaderloc=[]
+
+for k,loc in zip(correctSize,sizeheaderLocation):
+    
+    currentFile=GetTxtFile(GlobalDirectory+FileNames[k])
+    currentData=np.array([currentFile[j].split() for j in range(loc+1,len(currentFile)) if len(currentFile[j].split())==5])
+    disc=sum(1 for val in currentData.ravel() if val=="Nulo")/(len(currentData.ravel())+1)
+    
+    if disc < 0.25:
+        correctData.append(k)
+        correctHeaderloc.append(loc)
+        
+    missingdata.append(disc)
+    filesize.append(np.product(currentData.shape))
+    
+print(len(correctData))
+
+###############################################################################
+# Data locations
+###############################################################################
+
+def GetGeographicalLocation(FileData):
+    """
+    Parameters
+    ----------
+    FileData : str
+        directory/path to the file .
+
+    Returns
+    -------
+    locationContainer : list
+        Geografical location of a climatic station latitude and longitude.
+
+    """
+    
+    stringContainer = []
+    
+    for line in FileData:
+        
+        if len(stringContainer) < 2:
+            if re.match('(.*)'+"LONGITUD"+'(.*)',line) or re.match('(.*)'+"LATITUD"+'(.*)',line):
+                stringContainer.append(line)
+        else:
+            break
+    
+    locationContainer = [float(val[val.find(":")+1:-2]) for val in stringContainer]
+    locationContainer = [radians(val) for val in locationContainer]
+    
+    return locationContainer
+                
+LocationData=[]
+for k in correctData:
+    currentFile = GetTxtFile(GlobalDirectory+FileNames[k])
+    geo = GetGeographicalLocation(currentFile)
+    LocationData.append(geo)
+
+LocationData = np.array(LocationData)
+
+plt.figure(figsize=(10,7))
+plt.plot(LocationData[:,1],LocationData[:,0],"bo",alpha=0.15)
+ax = plt.gca()
+ImageStyle(ax)
+
+###############################################################################
+# Random Sampling
+###############################################################################
+
+SamplingIndex = np.arange(len(LocationData))
+np.random.shuffle(SamplingIndex)
+
+for val in np.linspace(0.1,0.3,4):
+    
+    maxData = int(val*len(LocationData))
+
+    SamplingMask = [False for k in range(len(LocationData))]
+
+    for val in SamplingIndex[0:maxData]:
+    
+        SamplingMask[val] = True
+    
+    plt.figure(figsize=(10,7))
+    plt.plot(LocationData[SamplingMask,1],LocationData[SamplingMask,0],"bo",alpha=0.15)
+    plt.title("Random Sampling " +'('+str(maxData) + ' data points)')
+    ax = plt.gca()
+    ImageStyle(ax)
+
+###############################################################################
+# Random Sampling equal squared regions 
+###############################################################################
+
+def GetIndexByLocation(Location,Xbounds,Ybounds):
+    """
+    Returns the index where the location value will fall in a region divided 
+    by the xbounds and the ybounds
+    
+    Parameters
+    ----------
+    Location : list,array-like
+        Geografical location of a climatic station latitude and longitude.
+    Xbounds : list,array-like
+        Contains the bounds of a grid in the x axis.
+    Ybounds : list,array-like
+        Contains the bounds of a grid in the y axis.
+
+    Returns
+    -------
+    responce : tuple
+        indexs of a square matrix where the location lays.
+
+    """
+    
+    responce = (0,0)
+    gridSize = len(Xbounds) - 1
+    
+    for k in range(gridSize):
+        for j in range(gridSize):
+            if Xbounds[k] < Location[1] < Xbounds[k+1] and Ybounds[j] < Location[0] < Ybounds[j+1]:
+                responce=(k,j)
+                break
+
+    return responce
+            
+
+def GetRandomlySquaredIndex(Data,Cuota,GridSize):
+    """
+    Divide a geographical region and randomly samples only a Cuota max 
+    samples for a each division.
+    
+    Parameters
+    ----------
+    Data : array-like
+        List of geografical locations.
+    Cuota : int
+        number of data points allowed to a specific quadrant.
+    GridSize : int
+        number regions in which the geographical area is divided.
+
+    Returns
+    -------
+    responceIndex : list
+        Index to resample Data.
+
+    """
+    
+    counterMatrix = np.zeros((GridSize,GridSize))
+    XBounds = np.linspace(Data[:,1].min(),Data[:,1].max(),GridSize+1)
+    YBounds = np.linspace(Data[:,0].min(),Data[:,0].max(),GridSize+1)
+    
+    dummyIndex = np.arange(len(Data))
+    np.random.shuffle(dummyIndex)
+    responceIndex = []
+    
+    for k in dummyIndex:
+        
+        point = Data[k]
+        kx,ky = GetIndexByLocation(point,XBounds,YBounds)
+        
+        if counterMatrix[kx,ky] <= Cuota:
+            responceIndex.append(k)
+            counterMatrix[kx,ky] = counterMatrix[kx,ky] +1
+            
+    return responceIndex
+
+
+gridSizes = np.arange(5,30,5)
+cuotas = np.arange(5,30,5)[::-1]
+
+for val,sal in zip(gridSizes,cuotas):
+
+    squaredCuotaIndex = GetRandomlySquaredIndex(LocationData,sal,val)
+    SamplingMask = [False for k in range(len(LocationData))]
+
+    for al in squaredCuotaIndex:    
+        SamplingMask[al] = True
+
+    plt.figure(figsize=(10,7))
+    plt.plot(LocationData[SamplingMask,1],LocationData[SamplingMask,0],"bo",alpha=0.15)
+    plt.title("Grid cuota " +'(Grid Size = '+str(val)+' Cuota = '+str(sal)+')')
+    ax = plt.gca()
+    ImageStyle(ax)
+
+###############################################################################
+# Location Analysis
+###############################################################################
+
+DistanceHaversine = DistanceMetric.get_metric("haversine").pairwise(LocationData)
+
+plt.figure()
+histData = plt.hist(DistanceHaversine.ravel(),bins=100)
+ax = plt.gca()
+PlotStyle(ax)
+
+
+distanceLocation = histData[0].argmax()
+minDistance = histData[1][distanceLocation-1:distanceLocation+1]
+
+locs = []
+locationToNeighbors = {}
+
+for k in range(LocationData.shape[0]):
+    
+    innerList = []
+    
+    for j in range(LocationData.shape[0]):
+        if  minDistance[0] < DistanceHaversine[k,j] < minDistance[1]:    
+            innerList.append(j)
+    
+    if len(innerList) > 0:
+        locs.append(innerList)
+        locationToNeighbors[k] = innerList
+
+
+plt.figure()
+plt.plot([len(locationToNeighbors[k]) for k in locationToNeighbors.keys()])
+ax = plt.gca()
+PlotStyle(ax)
+
+plt.figure()
+plt.hist([len(locationToNeighbors[k]) for k in locationToNeighbors.keys()],bins=100)
+ax = plt.gca()
+PlotStyle(ax)
+
+finalClusters = DBSCAN(eps=minDistance.mean()/10, min_samples=25, metric="precomputed")
+finalClusters.fit(DistanceHaversine) 
+
+clusterLabels = finalClusters.labels_
+nClusters = len(np.unique(clusterLabels))
+
+colors=[plt.cm.viridis(val) for val in np.linspace(0,1,num=nClusters)]
+
+plt.figure(figsize=(10,7))
+
+for col,val in zip(colors,np.unique(clusterLabels)):
+    
+    Mask = clusterLabels==val
+    plt.plot(LocationData[Mask,1],LocationData[Mask,0],"o",color=col,alpha=0.15)
+
+plt.title("DBSCAN clustering Large clusters")
+ax = plt.gca()
+ImageStyle(ax)
+
+###############################################################################
+# Cluster Analysis grid search for small clusters
+###############################################################################
+
+performanceData = np.zeros((20,20))
+
+for k in range(20):
+    
+    for j,val in enumerate(np.linspace(0.0005,0.005,20)):
+        
+        localCluster = DBSCAN(eps=val, min_samples=3+k, metric="precomputed")
+        localCluster.fit(DistanceHaversine)
+        perf = len(np.unique(localCluster.labels_))
+        performanceData[k,j]=perf
+        
+
+plt.figure(figsize=(7,7))
+plt.imshow(performanceData)
+plt.xticks(np.arange(0,20,4),[str(round(val,3)) for val in np.linspace(0.0005,0.005,5)],rotation=45)
+plt.yticks(np.arange(0,20,4),[str(val+3) for val in np.arange(0,20,4)])
+
+finalClusters = DBSCAN(eps=0.0012, min_samples=3, metric="precomputed")
+finalClusters.fit(DistanceHaversine) 
+
+clusterLabels = finalClusters.labels_
+nClusters = len(np.unique(clusterLabels))
+
+colors=[plt.cm.viridis(val) for val in np.linspace(0,1,num=nClusters)]
+
+plt.figure(figsize=(10,7))
+
+for col,val in zip(colors,np.unique(clusterLabels)):
+    
+    Mask = clusterLabels==val
+    plt.plot(LocationData[Mask,1],LocationData[Mask,0],"o",color=col,alpha=0.15)
+    
+ax = plt.gca()
+plt.title("DBSCAN clustering Small clusters")
+ImageStyle(ax)
+
+nonClusteredMask = clusterLabels == -1
+nonClusteredData = LocationData[nonClusteredMask]
+
+clusteredMask = clusterLabels!=-1
+clusteredData = LocationData[clusteredMask]
+clusteredLabels = clusterLabels[clusteredMask]
+
+clusterDummyIndex = np.arange(clusteredLabels.size)
+clusterCounter = np.zeros(clusteredLabels.max())
+
+clusterContainer = []
+
+for k in clusterDummyIndex:
+    if clusterCounter[clusteredLabels[k]-1]<1:
+        clusterContainer.append(clusteredData[k])
+        clusterCounter[clusteredLabels[k]-1] = clusterCounter[clusteredLabels[k]-1]+1
+
+
+plt.figure(figsize=(10,7))
+plt.plot(nonClusteredData[:,1],nonClusteredData[:,0],"bo",alpha=0.15)
+plt.title("DBSCAN clustered data points")
+ax = plt.gca()
+ImageStyle(ax)
+
+plt.figure(figsize=(10,7))
+plt.plot(clusteredData[:,1],clusteredData[:,0],"ro",alpha=0.15)
+plt.title("DBSCAN non clustered data points")
+ax= plt.gca()
+ImageStyle(ax)
+
+cuota = 4
+gridSize = 20
+
+squaredCuotaIndex = GetRandomlySquaredIndex(nonClusteredData,cuota,gridSize)
+SamplingMask = [False for k in range(len(nonClusteredData))]
+
+for val in squaredCuotaIndex:    
+        SamplingMask[val] = True
+
+plt.figure(figsize=(10,7))
+plt.plot(nonClusteredData[SamplingMask,1],nonClusteredData[SamplingMask,0],"bo",alpha=0.15)
+plt.title("Grid cuota sampling of DBSCAN non clustered data points")
+ax = plt.gca()
+ImageStyle(ax)
+
+###############################################################################
+# Selecting Non Clustered Data 
+###############################################################################
+
+nonClusteredIndex = np.array([k for k,val in enumerate(nonClusteredMask) if val])
+
+container=[]
+
+for k in nonClusteredIndex:
+    currentRow=DistanceHaversine[k,:]
+    container.append([currentRow[j] for j in nonClusteredIndex])
+
+nonClusteredDistances = np.array(container)
+
+###############################################################################
+# Evolutionary optimisation
+###############################################################################
+
+def MakeRandomIndexs(Boundary,Length,Population):
+    """
+    Parameters
+    ----------
+    Boundary : int
+        max index value.
+    Length : int
+        size of the random index
+    Population : int
+        Number of random indexes to create.
+
+    Returns
+    -------
+    array
+        random population of indexes.
+
+    """
+    
+    indexContainer = []
+
+    for k in range(Population):
+
+        dummyIndex = np.arange(Boundary)
+        np.random.shuffle(dummyIndex)
+        indexContainer.append(dummyIndex[0:Length])
+        
+    return np.array(indexContainer)
+    
+def CheckElements(Population,Boundary):
+    """
+    Ensures that each element in the index is unique.
+    
+    Parameters
+    ----------
+    Population : array
+        Random population of indexes.
+    Boundary : int
+        max index value.
+
+    Returns
+    -------
+    array
+        random population of indexes.
+
+    """
+    
+    population = []
+    
+    for val in Population:
+        
+        uniqueElements = np.unique(val)
+        toTake = len(val) - len(uniqueElements)
+        
+        if toTake == 0:
+            population.append(val)
+        else:
+            notInElement = list(set(np.arange(Boundary))-set(uniqueElements))
+            notInElement = np.array(notInElement)
+            np.random.shuffle(notInElement)
+            toAppend = np.append(uniqueElements,notInElement[0:toTake])
+            np.random.shuffle(toAppend)
+            population.append(toAppend)
+    
+    return np.array(population)
+            
+            
+def MutateElements(Population,MaxMutations,Boundary,MutationProbability=0.5):
+    """
+    Parameters
+    ----------
+    Population : array
+        Random population of indexes.
+    Boundary : int
+        max index value.
+    MaxMutations : int
+        Max number of mutations on a single index element.
+    MutationProbability : float, optional
+        Probability to change the index. The default is 0.5.
+
+    Returns
+    -------
+    Population : array
+        random population of indexes.
+
+    """
+    
+    populationIndex = np.arange(Boundary)
+    elementIndex = np.arange(len(Population[0]))
+    
+    for k in range(len(Population)):
+        
+        if np.random.random() < MutationProbability:
+            
+            notInElement = list(set(populationIndex)-set(Population[k,:]))
+            notInElement = np.array(notInElement)
+            
+            for j in range(MaxMutations):
+                
+                populationValue = np.random.choice(notInElement)
+                elementValue = np.random.choice(elementIndex)
+                Population[k,elementValue] = populationValue
+        
+    return Population
+        
+def CrossElements(PopulationA,PopulationB):
+    """
+    Parameters
+    ----------
+    PopulationA : array
+        Random population of indexes.
+    PopulationB : array
+        Random population of indexes.
+
+    Returns
+    -------
+    array
+        random population of indexes.
+
+    """
+    elementIndex = np.arange(len(PopulationA[0]))
+    newPopulation = []
+    
+    for val,sal in zip(PopulationA,PopulationB):
+        
+        cropPoint = np.random.choice(elementIndex)
+        newPopulation.append(np.append(val[0:cropPoint],sal[cropPoint:len(sal)]))
+        
+    return np.array(newPopulation)
+
+def MakeNewPopulation(Population,Fitness,Boundary,MaxMutations,MutationProbability=0.5):
+    """
+    Parameters
+    ----------
+    Population : array
+        Random population of indexes.
+    Fitness : float
+        Fitness of the index.
+    Boundary : int
+        max index value.
+    MaxMutations : int
+        Max number of mutations on a single index element.
+    MutationProbability : float, optional
+        Probability to change the index. The default is 0.5.
+
+
+    Returns
+    -------
+    finalPopulation : array
+        random population of indexes.
+
+    """
+    
+    order = np.argsort(Fitness)[::-1]
+    bestFraction = int(0.25*len(Population))
+    bestPopulation = np.array([Population[val] for val in order[0:bestFraction]])
+    
+    mutateElements = copy.deepcopy(bestPopulation)
+    crossElements = copy.deepcopy(bestPopulation)
+    
+    bestMutate = MutateElements(mutateElements,MaxMutations,Boundary,MutationProbability=MutationProbability)
+    crossElements = CrossElements(crossElements,mutateElements[::-1])
+    
+    remaningPopulation = MakeRandomIndexs(Boundary,len(Population[0]),len(Population)-2*bestFraction)
+    
+    finalPopulation = np.vstack((bestMutate,crossElements,remaningPopulation))
+    
+    finalPopulation = CheckElements(finalPopulation,Boundary)
+    
+    return finalPopulation
+
+def GetIndexFitness(Data,Index,MinThreshold):
+    """
+    Parameters
+    ----------
+    Data : array
+        
+    Index : array
+        Index of the selected items.
+    MinThreshold : float
+        Min value of the items in the index.
+
+    Returns
+    -------
+    fitness : float
+        fitness of the index.
+
+    """
+    
+    fitnessContainer = []
+    
+    for val in Index:
+        
+        currentData = Data[val]
+        currentData = [currentData[k] for k in Index if k!=val]
+        currentData = np.sort(currentData)
+        
+        fitnessContainer.append(np.std(currentData[0:3]))
+        
+    
+    fitness = np.min(fitnessContainer)
+    
+    return fitness
+        
+    
+def EvolvePopulation(Data,Length,Population,Generations,MutationProbability = 0.5,MaxMutations = 10,MinThreshold = 0.001):
+    """
+    Parameters
+    ----------
+    Data : array
+        Data used for the optimization.
+    Length : int
+        size of the random index
+    Population : array
+        Random population of indexes.
+    Generations : int
+        Number of optimization loops.
+    MutationProbability : float, optional
+        DESCRIPTION. The default is 0.5.
+    MaxMutations : int, optional
+        Max number of modifications of an index. The default is 10.
+    MinThreshold : float, optional
+        Min value of the items in the index.. The default is 0.001.
+
+    Returns
+    -------
+    fitness : list
+        performance of the population.
+    population : array
+         random population of indexes.
+
+    """
+    
+    boundary = Data.shape[0]
+    
+    population = MakeRandomIndexs(boundary,Length,Population)
+    fitness = [GetIndexFitness(Data,val,MinThreshold) for val in population]
+    print(max(fitness))
+    
+    for k in range(Generations):
+        
+        population = MakeNewPopulation(population, fitness,boundary,MaxMutations,MutationProbability = MutationProbability)
+        fitness = [GetIndexFitness(Data,val,MinThreshold) for val in population]
+        print(np.max(fitness))
+        
+    return fitness,population
+
+###############################################################################
+# Evolutionary optimisation
+###############################################################################
+
+a,b = EvolvePopulation(nonClusteredDistances,800,10,20)
+
+bst = np.argmax(a)
+
+evMask = [False for k in range(len(nonClusteredData))]  
+
+for val in b[bst]:    
+    evMask[val] = True
+
+plt.figure(figsize=(10,7))
+plt.plot(nonClusteredData[evMask,1],nonClusteredData[evMask,0],"bo",alpha=0.15)
+plt.title("Evolutionary sampling of DBSCAN non clustered data points")
+ax = plt.gca()
+ImageStyle(ax)
+
