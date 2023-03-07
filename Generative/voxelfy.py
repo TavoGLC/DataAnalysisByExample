@@ -103,7 +103,7 @@ def GetCentersLocations(NumberOfItems,stretch,random_norm=100):
         for i in range(xItems):
             
             midX=(xGrid[i+1]+xGrid[i])/2
-            currentLoc=(midX,np.random.random()/random_norm,midY)
+            currentLoc=(midX,0,midY)
             centerLocations.append(currentLoc)
             
     return centerLocations
